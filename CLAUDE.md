@@ -137,7 +137,7 @@ All four steps are required for **app/provider vars** (API keys the proxy uses).
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 — Proxy | ✅ deployed, tested | EVM-only auth. `BALANCE_CONTRACT_ADDRESS=` (mock) |
-| 2 — Pull-payment billing | ✅ deployed; ⏳ hardening redeploy pending | Live contract `0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9` (Base Sepolia) is the **pre-hardening** version. The fee-on-top + cumulative-idempotent + rotatable-roles version is built/tested but **not yet deployed**. Deployed-address source of truth: `packages/contracts/README.md`. Pull worker active ($0.01 threshold). Proxy wallet: `0xe7Ce0c8cFD304A6aB8Dc51d1B9FA50E15C2c5f6D` |
+| 2 — Pull-payment billing | ✅ deployed (hardened) | Live contract `0x9DE2D0a4a360ff6D9280063C48Bee53C32fcb34e` (Base Sepolia) — fee-on-top + cumulative-idempotent + rotatable-roles, validated. ⚠️ deployed with `treasury == proxy == owner == 0xe7Ce…`; redeploy with a distinct treasury + cold owner for real fee separation + rotation recovery. Prior pre-hardening contract: `0x7ddF…` (superseded). Deployed-address source of truth: `packages/contracts/README.md`. Pull worker active ($0.01 threshold). |
 | 3 — zkTLS | 🔲 stub only | Proof queue exists; no prover integrated (no production library available mid-2026) |
 | 4 — Fingerprinting | ✅ running | Logs mismatches; no slashing yet |
 | 5 — Solana rail | ✅ deployed | ed25519 bearer token auth live; on-chain Solana billing intentionally in mock mode (`SOLANA_BILLING_ENABLED` not set) — Solana callers pay nothing until a Solana program is deployed |

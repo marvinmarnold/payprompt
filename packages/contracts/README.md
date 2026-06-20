@@ -27,8 +27,8 @@ compromised hot key or a token-blocklisted recipient without redeploying.
 
 | Contract | Address | Version | Notes |
 |----------|---------|---------|-------|
-| LatchkeyBilling | `0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9` | **pre-hardening (SUPERSEDED)** | Old `pull(caller, gross)` fee-inclusive model, no `settled`/`owner`. **Pending redeploy** of the fee-on-top + cumulative + rotatable version. |
-| LatchkeyBilling | _redeploy pending_ | fee-on-top + cumulative + rotatable | Set here + in `.env` once deployed and validated. |
+| LatchkeyBilling | `0x9DE2D0a4a360ff6D9280063C48Bee53C32fcb34e` | **ACTIVE** — fee-on-top + cumulative + rotatable | Validated (`settled`/`owner` present). ⚠️ Deployed with `treasury == proxy == owner == 0xe7Ce…`; redeploy with a distinct treasury + cold owner to actually get fee separation and key-rotation recovery. |
+| LatchkeyBilling | `0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9` | superseded (pre-hardening) | Old `pull(caller, gross)` fee-inclusive model, no `settled`/`owner`. |
 | USDC (testnet) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | — | Base Sepolia USDC. |
 
 ## Deploy + validate

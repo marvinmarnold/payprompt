@@ -51,14 +51,14 @@ Before your first request, you must approve the billing contract to pull from yo
 read -s -p "Private key (0x...): " PK && echo
 cast send 0x036CbD53842c5426634e7929541eC2318f3dCF7e \
   "approve(address,uint256)" \
-  0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9 \
+  0x9DE2D0a4a360ff6D9280063C48Bee53C32fcb34e \
   1000000 \
   --rpc-url https://sepolia.base.org \
   --private-key "$PK"
 ```
 This approves $1.00 (1,000,000 atomic units at 6 decimals), enough for ~100 cheap requests.
 
-**Using a wallet UI (MetaMask, Rabby, etc.):** Connect to Base Sepolia, call `approve` on the USDC contract (`0x036CbD53842c5426634e7929541eC2318f3dCF7e`) with the billing contract as spender (`0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9`).
+**Using a wallet UI (MetaMask, Rabby, etc.):** Connect to Base Sepolia, call `approve` on the USDC contract (`0x036CbD53842c5426634e7929541eC2318f3dCF7e`) with the billing contract as spender (`0x9DE2D0a4a360ff6D9280063C48Bee53C32fcb34e`).
 
 **Verify your allowance:**
 ```bash
