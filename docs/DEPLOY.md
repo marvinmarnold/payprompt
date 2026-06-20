@@ -32,19 +32,21 @@ And the other two deploy-time addresses:
 ## A. Redeploy the contract
 
 **Prereqs:** [Foundry](https://book.getfoundry.sh/) installed; a deployer wallet funded with Base
-Sepolia ETH ([faucet](https://docs.base.org/docs/tools/network-faucets)); decide your `TREASURY_ADDRESS`
-and `OWNER_ADDRESS`.
+Sepolia ETH ([faucet](https://docs.base.org/docs/tools/network-faucets)).
+
+Fill these into `packages/proxy/.env` (all annotated in `.env.example`) — then deploy with **one
+command, no inline vars**:
+
+| `.env` key | What it is |
+|------------|-----------|
+| `TREASURY_ADDRESS` | receives the 1% fee — keep distinct from the proxy |
+| `OWNER_ADDRESS` | cold key/multisig that can rotate proxy/treasury |
+| `DEPLOYER_PRIVATE_KEY` | pays gas (optional — defaults to `PROXY_PRIVATE_KEY`) |
+| `USDC_ADDRESS`, `BASE_RPC_URL`, `PROXY_PRIVATE_KEY` | already set for normal operation |
 
 ```bash
-cd packages/contracts
-USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e \
-PROXY_ADDRESS=0xe7Ce0c8cFD304A6aB8Dc51d1B9FA50E15C2c5f6D \
-TREASURY_ADDRESS=<your-distinct-treasury> \
-OWNER_ADDRESS=<your-cold-owner> \
-forge script script/Deploy.s.sol:Deploy \
-  --rpc-url https://sepolia.base.org \
-  --private-key <funded-deployer-key> \
-  --broadcast
+bash deploy/deploy-contract.sh        # or: bun run deploy:contract
+# Reads packages/proxy/.env, derives `proxy` from PROXY_PRIVATE_KEY, broadcasts.
 # → logs "LatchkeyBilling deployed at: 0xNEW..."
 ```
 
