@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { openDb, closeDb } from '../src/db'
 import { accrue, getWalletState } from '../src/wallet'
-import { processPulls, type PullChain } from '../src/puller'
+import { processPulls, addAtomic, type PullChain } from '../src/puller'
 import { assertWalletAllowed } from '../src/wallet'
 import type { Database } from 'bun:sqlite'
 
@@ -144,5 +144,60 @@ describe('processPulls — crash recovery (reconcile)', () => {
     expect(s.pull_failure_count).toBe(1)
     expect(s.total_pulled_usd).toBeCloseTo(0, 10)
     expect(s.pending_pull_usd).toBeNull()
+  })
+})
+
+describe('addAtomic — safe-integer guard for cumulative atomic math', () => {
+  it('adds two atomic amounts', () => {
+    expect(addAtomic(100_000, 50_000)).toBe(150_000)
+  })
+
+  it('throws rather than silently lose precision past Number.MAX_SAFE_INTEGER', () => {
+    expect(() => addAtomic(Number.MAX_SAFE_INTEGER, 1)).toThrow('atomic overflow')
+  })
+})
+
+describe('processPulls — cumulative settlement (on-chain idempotency)', () => {
+  it('signs the cumulative service total, advancing settled_atomic across pulls', async () => {
+    accrue(db, '0xc', 0.10)
+    const chain = mockChain()
+    await processPulls(db, chain, OPTS) // first sweep: delta 100000 → cumulative 100000
+    expect(chain.signed[0].gross).toBe(100_000n)
+    expect(getWalletState(db, '0xc')!.settled_atomic).toBe(100_000)
+
+    accrue(db, '0xc', 0.12) // 120000 of new debt (above the 0.10 threshold)
+    await processPulls(db, chain, OPTS) // second sweep: cumulative 220000, NOT the 120000 delta
+    expect(chain.signed[1].gross).toBe(220_000n)
+    expect(getWalletState(db, '0xc')!.settled_atomic).toBe(220_000)
+  })
+
+  it('does not advance settled_atomic when a pull reverts', async () => {
+    accrue(db, '0xbad', 0.12)
+    await processPulls(db, mockChain({ defaultWait: 'reverted' }), OPTS)
+    expect(getWalletState(db, '0xbad')!.settled_atomic).toBe(0)
+  })
+
+  it('crash before the pending-pull write loses nothing: debt survives, next sweep pulls', async () => {
+    accrue(db, '0xcrash', 0.12)
+    // Simulate a crash during step 2 BEFORE the UPDATE persists pending_pull_*:
+    // signPull throws, so processPulls rejects before writing the pending row.
+    const throwingChain: PullChain = {
+      async signPull() { throw new Error('crash before write') },
+      async broadcastRaw() {},
+      async getReceipt() { return null },
+      async waitForReceipt() { return { status: 'success' } },
+    }
+    await expect(processPulls(db, throwingChain, OPTS)).rejects.toThrow('crash before write')
+    const after = getWalletState(db, '0xcrash')!
+    expect(after.accrued_usd).toBeCloseTo(0.12, 10) // debt intact
+    expect(after.pending_pull_usd).toBeNull()        // nothing left in flight
+    expect(after.settled_atomic).toBe(0)             // nothing settled
+
+    // Next sweep with a healthy chain settles cleanly — no double-bill.
+    await processPulls(db, mockChain(), OPTS)
+    const settled = getWalletState(db, '0xcrash')!
+    expect(settled.accrued_usd).toBeCloseTo(0, 10)
+    expect(settled.total_pulled_usd).toBeCloseTo(0.12, 10)
+    expect(settled.settled_atomic).toBe(120_000)
   })
 })

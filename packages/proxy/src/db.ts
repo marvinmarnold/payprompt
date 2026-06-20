@@ -116,7 +116,8 @@ export function openDb(path: string = process.env.DB_PATH ?? './latchkey.db'): D
       pending_pull_raw    TEXT,
       last_pull_at        INTEGER,
       last_pull_tx        TEXT,
-      blocked             INTEGER NOT NULL DEFAULT 0
+      blocked             INTEGER NOT NULL DEFAULT 0,
+      settled_atomic      INTEGER NOT NULL DEFAULT 0
     )
   `)
 
@@ -128,6 +129,17 @@ export function openDb(path: string = process.env.DB_PATH ?? './latchkey.db'): D
     .get()
   if (hasLastPullTx && hasLastPullTx.count === 0) {
     db.run(`ALTER TABLE wallet_state ADD COLUMN last_pull_tx TEXT`)
+  }
+
+  // Migration: add settled_atomic — the off-chain mirror of the contract's monotonic
+  // settled[caller] cumulative checkpoint (atomic USDC, fee-exclusive).
+  const hasSettledAtomic = db
+    .query<{ count: number }, []>(
+      `SELECT COUNT(*) as count FROM pragma_table_info('wallet_state') WHERE name = 'settled_atomic'`,
+    )
+    .get()
+  if (hasSettledAtomic && hasSettledAtomic.count === 0) {
+    db.run(`ALTER TABLE wallet_state ADD COLUMN settled_atomic INTEGER NOT NULL DEFAULT 0`)
   }
 
   return db

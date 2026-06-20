@@ -11,6 +11,8 @@ export type WalletState = {
   last_pull_at: number | null
   last_pull_tx: string | null
   blocked: number
+  /** Off-chain mirror of the contract's monotonic settled[caller] (atomic USDC, fee-exclusive). */
+  settled_atomic: number
 }
 
 export function getWalletState(db: Database, address: string): WalletState | null {

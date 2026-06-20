@@ -7,7 +7,7 @@ import { baseSepolia, base } from 'viem/chains'
 import type { PullChain } from './puller'
 
 const BILLING_ABI = parseAbi([
-  'function pull(address caller, uint256 gross) external',
+  'function pull(address caller, uint256 cumulativeService) external',
 ])
 
 export interface PullChainConfig {
@@ -33,11 +33,11 @@ export function makePullChain(cfg: PullChainConfig): PullChain {
   const pub = createPublicClient({ chain, transport })
 
   return {
-    async signPull(caller, gross) {
+    async signPull(caller, cumulativeServiceAtomic) {
       const data = encodeFunctionData({
         abi: BILLING_ABI,
         functionName: 'pull',
-        args: [caller as `0x${string}`, gross],
+        args: [caller as `0x${string}`, cumulativeServiceAtomic],
       })
       // prepareTransactionRequest fills nonce, gas, and fee fields from the chain.
       const request = await wallet.prepareTransactionRequest({
