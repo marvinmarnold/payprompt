@@ -27,6 +27,20 @@ export interface PullOpts {
 
 const now = () => Math.floor(Date.now() / 1000)
 
+/**
+ * Add two atomic USDC amounts, guarding against silent JS precision loss past 2^53.
+ * settled_atomic is a JS number until it is converted to BigInt for signing; once a
+ * wallet's cumulative total would exceed Number.MAX_SAFE_INTEGER, plain addition would
+ * truncate and desync the off-chain mirror from the on-chain checkpoint. Throw instead.
+ */
+export function addAtomic(a: number, b: number): number {
+  const sum = a + b
+  if (!Number.isSafeInteger(sum)) {
+    throw new Error(`atomic overflow: ${a} + ${b} exceeds Number.MAX_SAFE_INTEGER`)
+  }
+  return sum
+}
+
 function settle(
   db: Database,
   address: string,
@@ -97,7 +111,7 @@ export async function processPulls(db: Database, chain: PullChain, opts: PullOpt
       // The signed tx encoded cumulative = settled_atomic + delta; settled_atomic is unchanged
       // until success, so recomputing the delta from the frozen snapshot reproduces that total.
       const deltaAtomic = Math.round((w.pending_pull_usd ?? 0) * scale)
-      settle(db, w.address, w.pending_pull_usd ?? 0, w.settled_atomic + deltaAtomic, hash ?? undefined)
+      settle(db, w.address, w.pending_pull_usd ?? 0, addAtomic(w.settled_atomic, deltaAtomic), hash ?? undefined)
     } else fail(db, w.address, maxFailures)
   }
 
@@ -118,7 +132,7 @@ export async function processPulls(db: Database, chain: PullChain, opts: PullOpt
     const deltaAtomic = Math.round(snapshot * scale)
     // Sign the caller's CUMULATIVE service total, not the bare delta. The contract charges
     // only (cumulative - settled[caller]), so retries/overlaps can never double-charge.
-    const cumulativeAtomic = w.settled_atomic + deltaAtomic
+    const cumulativeAtomic = addAtomic(w.settled_atomic, deltaAtomic)
     const { hash, raw } = await chain.signPull(w.address, BigInt(cumulativeAtomic))
     // Persist BEFORE broadcast — the crash-safety invariant.
     db.run(

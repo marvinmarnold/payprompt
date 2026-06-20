@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { openDb, closeDb } from '../src/db'
 import { accrue, getWalletState } from '../src/wallet'
-import { processPulls, type PullChain } from '../src/puller'
+import { processPulls, addAtomic, type PullChain } from '../src/puller'
 import { assertWalletAllowed } from '../src/wallet'
 import type { Database } from 'bun:sqlite'
 
@@ -144,6 +144,16 @@ describe('processPulls — crash recovery (reconcile)', () => {
     expect(s.pull_failure_count).toBe(1)
     expect(s.total_pulled_usd).toBeCloseTo(0, 10)
     expect(s.pending_pull_usd).toBeNull()
+  })
+})
+
+describe('addAtomic — safe-integer guard for cumulative atomic math', () => {
+  it('adds two atomic amounts', () => {
+    expect(addAtomic(100_000, 50_000)).toBe(150_000)
+  })
+
+  it('throws rather than silently lose precision past Number.MAX_SAFE_INTEGER', () => {
+    expect(() => addAtomic(Number.MAX_SAFE_INTEGER, 1)).toThrow('atomic overflow')
   })
 })
 

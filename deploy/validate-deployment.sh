@@ -21,6 +21,13 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
+# Phase-1 invariant: BALANCE_CONTRACT_ADDRESS must be empty (mock balance mode). A non-empty
+# value makes the proxy read on-chain USDC balance → 0 for unfunded wallets → 402 on every request.
+if [ -n "${BALANCE_CONTRACT_ADDRESS:-}" ]; then
+  echo "BALANCE_CONTRACT_ADDRESS must be empty in phase 1 (got: $BALANCE_CONTRACT_ADDRESS)" >&2
+  exit 1
+fi
+
 echo "==> Stage 1: forge unit suite"
 ( cd "$ROOT/packages/contracts" && forge test )
 

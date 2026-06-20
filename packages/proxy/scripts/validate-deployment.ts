@@ -97,11 +97,13 @@ async function main(): Promise<void> {
 
   // --- Opt-in live pull: fee-on-top + idempotency against the real chain ---
   if (process.env.VALIDATE_LIVE_PULL === 'true') {
-    const proxyKey = process.env.VALIDATE_PROXY_KEY as `0x${string}` | undefined
+    // pull() is onlyProxy, so the signer must be the proxy key. Source it from the standard
+    // PROXY_PRIVATE_KEY in packages/proxy/.env (VALIDATE_PROXY_KEY kept as an explicit override).
+    const proxyKey = (process.env.PROXY_PRIVATE_KEY ?? process.env.VALIDATE_PROXY_KEY) as `0x${string}` | undefined
     const caller = process.env.VALIDATE_CALLER_ADDRESS as `0x${string}` | undefined
     const delta = BigInt(process.env.VALIDATE_PULL_ATOMIC ?? '1000')
     if (!proxyKey || !caller) {
-      console.log('• live pull skipped — set VALIDATE_PROXY_KEY and VALIDATE_CALLER_ADDRESS to enable')
+      console.log('• live pull skipped — set PROXY_PRIVATE_KEY (or VALIDATE_PROXY_KEY) and VALIDATE_CALLER_ADDRESS to enable')
     } else if (!usdc || !treasury || !proxy) {
       check('live: contract roles readable for live pull', false, 'usdc/treasury/proxy missing')
     } else {
@@ -127,10 +129,13 @@ async function main(): Promise<void> {
         (await pub.readContract({ address, abi: ABI, functionName: 'settled', args: [caller] })) === newTotal)
 
       // Idempotency: re-submitting the same total must revert (non-monotonic).
+      // viem may either throw on a revert OR return a mined receipt with status 'reverted'.
+      // Treat both as a revert so the idempotency check can't false-pass.
       let reverted = false
       try {
         const h2 = await wallet.writeContract({ address, abi: ABI, functionName: 'pull', args: [caller, newTotal] })
-        await pub.waitForTransactionReceipt({ hash: h2 })
+        const r2 = await pub.waitForTransactionReceipt({ hash: h2 })
+        reverted = r2.status === 'reverted'
       } catch { reverted = true }
       check('live: replay of the same cumulative total reverts (idempotent)', reverted)
     }
