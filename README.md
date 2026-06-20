@@ -2,7 +2,7 @@
 
 **One endpoint. One wallet. Every open-weight model.**
 
-A crypto-native LLM marketplace proxy. Callers authenticate with a wallet signature instead of an API key, pre-fund a USDC balance on Base, and make standard OpenAI or Anthropic API calls. The proxy routes to the cheapest available provider, logs billing to SQLite, and settles on-chain.
+A crypto-native LLM marketplace proxy. Callers authenticate with a wallet signature instead of an API key, approve a one-time USDC allowance on Base, and make standard OpenAI or Anthropic API calls. The proxy routes to the cheapest available provider, logs billing to SQLite, and settles on-chain by pulling from the allowance. (A prepaid-deposit model — pay up front, draw down, auto-refill — is planned; see "What's built" below.)
 
 Works out of the box with Claude Code, Cursor, the OpenAI SDK, and anything else that takes a base URL and an API key.
 
@@ -10,45 +10,40 @@ Works out of the box with Claude Code, Cursor, the OpenAI SDK, and anything else
 
 ## What's built vs what's planned
 
-### ✅ Phase 1 — Proxy (complete, deployed)
+### ✅ Phase 1 — Proxy (deployed)
 
 - EIP-712 wallet-signed bearer tokens — no accounts, no signup, no gas
-- OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) endpoints
-- Format translation between both wire formats
-- Cheapest-provider routing from a SQLite registry
-- Provider discovery: queries `/v1/models` on startup, creates listings automatically
-- Streaming SSE passthrough with token usage extraction
-- Per-request billing logged to SQLite
+- OpenAI (`/v1/chat/completions`) and Anthropic (`/v1/messages`) endpoints, with format translation between both wire formats
+- Cheapest-provider routing from a SQLite registry; provider discovery queries `/v1/models` on startup and creates listings automatically
+- Streaming SSE passthrough with token usage extraction; per-request billing logged to SQLite
 - Admin dashboard: `GET /admin/usage` (30-day aggregates by wallet/provider/model) + Next.js frontend at `payprompt-admin.vercel.app`
-- Playwright E2E test suite (12 tests, includes full billing loop verification)
+- Playwright E2E suite incl. full billing-loop verification
 - Deployed at `https://api.latchkey.me` — Bun + Caddy on Ubuntu VPS
-- Seeded providers: Anthropic (`claude-` prefix), DeepSeek (HF repo IDs + `deepseek-` prefix), OpenAI (`gpt-` prefix + o-series)
-- **Phase 1 mode:** `BALANCE_CONTRACT_ADDRESS` is empty — balance check is mocked (always passes). All valid EVM tokens get access. Intentional until phase 2 funding flow is live.
-- **Known gaps (acceptable for single-operator use, addressed in phase 2):** unauthenticated admin endpoint, no rate limiting, plaintext provider API keys in SQLite.
+- **Known gaps (accepted for single-operator use):** unauthenticated admin endpoints, no rate limiting, plaintext provider API keys in SQLite.
 
-### 🔲 Phase 2 — On-chain balance (next)
+### ✅ Phase 2 — Pull-payment billing (deployed)
 
-- Wire up `PaypromptBalance.sol` (already deployed at `0x9FDcd9DCe63e29575816c6fa9Df689a9F4566716` on Base Sepolia)
-- Pre-request balance check: `balance - pending_debits >= estimated_cost`
-- Deferred batch settlement (every 60s) with per-wallet credit limit and circuit breaker
-- Per-wallet mutex to prevent concurrent over-spend
-- Idempotency on `debit()` calls using billing_log row ID
+- `LatchkeyBilling.sol` on Base Sepolia (`0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9`). Callers `approve()` a USDC allowance once; a crash-safe background worker pulls when accrued debt crosses the threshold (`PULL_THRESHOLD_USD`, default $0.01).
+- Per-wallet state in SQLite (`wallet_state`): accrued debt, settlement checkpoint, blocked flag.
+- ⏳ **Hardening (built, on PR #8, pending redeploy):** 1% fee charged **on top** of the provider price; monotonic `settled[caller]` checkpoint for idempotent settlement (retries/overlaps can't double-charge); owner-**rotatable** `proxy`/`treasury`. The live `0x7ddF…` contract is the pre-hardening version — see `docs/DEPLOY.md` to redeploy.
+- **Phase-1 mock note:** `BALANCE_CONTRACT_ADDRESS` stays empty (the legacy custodial-vault read). The pull-payment gate runs off `BILLING_CONTRACT_ADDRESS`.
+
+### 🔜 Planned — Prepaid deposit model
+
+- Flip from postpaid (use-then-pull) to prepaid: after the user approves an allowance, the proxy collects a deposit up front, gates usage until paid, draws the deposit down per request, and auto-refills before it runs out. Non-custodial (reuses `LatchkeyBilling`). Design TBD in a spec.
 
 ### 🔲 Phase 3 — zkTLS proof (stub)
 
-- `tls_proof_queue` table + background worker exist; no prover integrated
-- Needed to prove API-delegating providers actually called the upstream
-- Blocked on production-ready prover library (TLSNotary, Reclaim, zkPass all pre-production as of mid-2026)
+- `tls_proof_queue` table + background worker exist; no prover integrated.
+- Needed to prove API-delegating providers actually called the upstream. Blocked on a production-ready prover library (TLSNotary, Reclaim, zkPass all pre-production as of mid-2026).
 
-### 🔲 Phase 4 — Model verification (running, no enforcement)
+### ✅ Phase 4 — Model fingerprinting (running, no enforcement)
 
-- Fingerprint probes run on startup and every 6h
-- Logs response hash drift — no slashing until phase 2 contract is live
+- Fingerprint probes run on startup and every 6h; response hash drift is logged. No slashing yet (needs a staking contract).
 
-### 🔲 Phase 5 — Solana rail (disabled)
+### ✅ Phase 5 — Solana rail (auth live, billing mocked)
 
-- Code exists, disabled in phase 1
-- Re-enable in `middleware/auth.ts` when Solana funding flow is ready
+- ed25519 bearer-token auth is live. On-chain Solana billing is intentionally mocked (`SOLANA_BILLING_ENABLED` unset) until a Solana program is deployed — Solana callers currently pay nothing.
 
 ---
 
@@ -125,7 +120,7 @@ Caller (agent or developer)
   ▼
 Proxy
   ├─ Verify token signature (viem EIP-712)
-  ├─ Check balance           ← mocked phase 1; real contract phase 2
+  ├─ Gate on allowance       ← mock-passes while BILLING_CONTRACT_ADDRESS is empty
   ├─ Normalise format        ← Anthropic → OpenAI if needed
   ├─ Select listing          ← cheapest active listing for model (SQLite)
   ├─ Forward request         ← streaming SSE passthrough
@@ -154,12 +149,21 @@ type BearerToken = {
 ## Project layout
 
 ```
-packages/proxy/        Bun/Elysia proxy server
+packages/proxy/        Bun/Elysia proxy server (auth, routing, billing, pull worker)
 packages/admin/        Next.js admin dashboard (Vercel)
 packages/e2e/          Playwright E2E tests
-packages/contracts/    Solidity smart contracts (Foundry)
-deploy/                Server deploy + sync scripts
+packages/contracts/    Solidity smart contracts (Foundry) — LatchkeyBilling.sol
+packages/indexer/      Ponder on-chain event indexer
+packages/devbox/       Provider devbox (see packages/devbox/CONTEXT.md)
+deploy/                Server deploy + sync + deployment-validation scripts
+docs/                  Design specs, ADRs, DEPLOY.md, testing-guide.md
 ```
+
+## Deploying
+
+See **[`docs/DEPLOY.md`](docs/DEPLOY.md)** for the full runbook — redeploying the contract,
+syncing the server `.env`, restarting the proxy, and the admin dashboard. Every environment
+variable is annotated in **`packages/proxy/.env.example`**.
 
 ## Stack
 
