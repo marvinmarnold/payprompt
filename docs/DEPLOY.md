@@ -72,7 +72,9 @@ bash deploy/validate-deployment.sh        # expect: PASS
 bash deploy/sync-env.sh
 
 # 2. Pull the latest code on the box and restart the service.
-ssh -i ~/.ssh/id_ed25519 root@151.247.22.152 \
+#    $DEPLOY_HOST is the prod VPS — load it from .env (same var deploy/sync-env.sh uses).
+set -a; source packages/proxy/.env; set +a
+ssh -i ~/.ssh/id_ed25519 root@"$DEPLOY_HOST" \
   "cd /root/latchkey && git fetch origin && git checkout -B main origin/main && systemctl restart latchkey-proxy"
 
 # 3. Confirm billing is live.

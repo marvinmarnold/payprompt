@@ -23,9 +23,10 @@ Works out of the box with Claude Code, Cursor, the OpenAI SDK, and anything else
 
 ### ✅ Phase 2 — Pull-payment billing (deployed)
 
-- `LatchkeyBilling.sol` on Base Sepolia (`0x7ddF81666B5b0ABcF26eA1576aD257244eF2F9f9`). Callers `approve()` a USDC allowance once; a crash-safe background worker pulls when accrued debt crosses the threshold (`PULL_THRESHOLD_USD`, default $0.01).
+- `LatchkeyBilling.sol` on Base Sepolia (`0x9DE2D0a4a360ff6D9280063C48Bee53C32fcb34e`). Callers `approve()` a USDC allowance once; a crash-safe background worker pulls when accrued debt crosses the threshold (`PULL_THRESHOLD_USD`, default $0.01).
 - Per-wallet state in SQLite (`wallet_state`): accrued debt, settlement checkpoint, blocked flag.
-- ⏳ **Hardening (built, on PR #8, pending redeploy):** 1% fee charged **on top** of the provider price; monotonic `settled[caller]` checkpoint for idempotent settlement (retries/overlaps can't double-charge); owner-**rotatable** `proxy`/`treasury`. The live `0x7ddF…` contract is the pre-hardening version — see `docs/DEPLOY.md` to redeploy.
+- ✅ **Hardening (deployed):** 1% fee charged **on top** of the provider price; monotonic `settled[caller]` checkpoint for idempotent settlement (retries/overlaps can't double-charge); owner-**rotatable** `proxy`/`treasury`. The prior `0x7ddF…` contract is the pre-hardening version (superseded). Deployed-address source of truth: `packages/contracts/README.md`.
+- ⚠️ The active deploy has `treasury == proxy == owner` (`0xe7Ce…`); redeploy with a distinct treasury + cold owner to get real fee separation and key-rotation recovery — see `docs/DEPLOY.md`.
 - **Phase-1 mock note:** `BALANCE_CONTRACT_ADDRESS` stays empty (the legacy custodial-vault read). The pull-payment gate runs off `BILLING_CONTRACT_ADDRESS`.
 
 ### 🔜 Planned — Prepaid deposit model
