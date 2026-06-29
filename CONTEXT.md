@@ -1,25 +1,39 @@
-# Latchkey LLM Marketplace — Glossary
+# Latchkey and bitllm: Glossary
+
+This repo produces two outputs (see `docs/adr/0005`): **bitllm**, a protocol for serving LLM inference, and **latchkey**, an application built on it.
+
+## bitllm
+A protocol for serving LLM inference.
+Any host can run bitllm to expose a URL that answers inference requests, analogous to bittorrent for files or git for version history.
+A bitllm host speaks an OpenAI-compatible wire format.
+bitllm is open: anyone can run a host, and applications other than latchkey could be built on it.
+_Avoid_: server, daemon (bitllm is the protocol; a host is one instance of it).
+
+## latchkey
+An application built on bitllm, analogous to what GitHub is to git: a marketplace plus admin panel.
+latchkey aggregates bitllm hosts, routes each Caller request to the cheapest suitable Listing, and settles billing on-chain.
+latchkey also runs a bitllm server itself, so a Provider can sell inference without running any infrastructure (see Provider).
+On the consume side, latchkey proxies Callers that follow terms of service.
 
 ## Marketplace
-A listing marketplace where independent Providers register their own inference endpoints and prices. The platform routes requests and handles billing. Credential custody is **mode-specific**: in self-hosted mode the platform holds no Provider credentials; in API-delegating mode it custodies the Provider's upstream credential, **encrypted at rest**, used only to serve that Provider's Listings (see `docs/adr/0005`). Providers compete on price (v1) and eventually on quality heuristics (v2).
+The latchkey feature set that lets independent Providers register inference and prices, and routes Caller requests to the cheapest Listing.
+Providers compete on price (v1) and eventually on quality heuristics (v2).
 
 Long-term policy: open-weight models only, where community inference does not violate terms of service. Proprietary APIs (OpenAI, Anthropic, etc.) are not technically blocked — the platform imposes no enforcement — but are excluded by marketplace policy. During development and testing, proprietary APIs may be registered as ordinary Providers to validate routing, billing, and format translation before open-weight providers are available.
 
 ## Provider
 An entity that serves inference for one or more Models and registers listings with the Marketplace. A Provider's canonical identity is the EVM **wallet** that registered it: one wallet owns exactly one Provider, only that wallet may manage the Provider's Listings, and that wallet is also the Provider's payout address. The name and active flag are a human-readable label and a kill-switch, not an identity. (Operator-seeded Providers — e.g. the dev seed's TwoShoes and BigThought — predate self-onboarding, carry no wallet, and are operator-managed rather than self-service.) The routing details (endpoint, API key, price, reliability) live on each individual Listing, not on the Provider entity itself. A single Provider may hold listings that use different upstream services and different API keys. Dev seed includes two Providers: **TwoShoes** (DeepSeek + Anthropic listings) and **BigThought** (OpenAI listings).
 
-Two listing modes:
+A Provider serves inference in one of two ways:
 
-- **Self-hosted** — runs inference directly (vLLM, Ollama, llama.cpp, etc.) and exposes an OpenAI-compatible endpoint. The Marketplace forwards requests directly.
-- **API-delegating** — delegates to an upstream API service (DeepSeek, Groq, Together AI, Fireworks, Hyperbolic, etc.) using credentials held by the Provider.
-
-The Marketplace does not control or custody Provider infrastructure.
+- **bitllm host**: the Provider runs their own bitllm host (vLLM, Ollama, llama.cpp, or any OpenAI-compatible server) and registers its URL. latchkey routes to it and holds no credential for it. (Previously called "self-hosted".)
+- **latchkey-hosted**: the Provider uploads an upstream API key and pricing, and latchkey runs bitllm on their behalf, so they need no infrastructure. latchkey custodies the uploaded key, encrypted at rest. (Previously called "API-delegating".)
 
 ## Connection
 The unit a Provider registers: an **(endpoint, wire format, credential)** the Provider exposes to the Marketplace. The Marketplace discovers the Models served on a Connection and creates one **Listing** per Model — Providers register Connections, not individual Listings. Pricing is **not** set on a Connection; it is set per Listing (per Model). A Provider may hold many Connections (a delegated DeepSeek key and a self-hosted vLLM box are two Connections under one wallet).
 
-- **API-delegating Connection** — the credential is the Provider's own upstream API key, custodied by the platform encrypted at rest (see `docs/adr/0005`).
-- **Self-hosted Connection** — no upstream credential (the Provider's own server holds it); an optional proxy-secret lets that server confirm a request came from the Marketplace.
+- **latchkey-hosted Connection**: the credential is the Provider's own upstream API key, custodied by latchkey encrypted at rest.
+- **bitllm-host Connection**: no upstream credential (the Provider's own bitllm host holds it); an optional proxy-secret lets that host confirm a request came from latchkey.
 
 _Avoid_: integration, account, upstream (used adjectivally elsewhere).
 

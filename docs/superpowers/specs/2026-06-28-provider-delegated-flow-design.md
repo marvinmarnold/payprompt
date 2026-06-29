@@ -1,17 +1,17 @@
-# Provider Self-Onboarding: API-delegating flow (design, WIP)
+# Provider Self-Onboarding: latchkey-hosted flow (design, WIP)
 
-_Date: 2026-06-28 · Status: in progress (grilling). Comment inline on this PR._
+_Date: 2026-06-28. Status: in progress (grilling). Comment inline on this PR._
 
-Scope of this pass: the API-delegating provider flow only (provider supplies an upstream
-credential and per-Model pricing; the platform custodies the credential encrypted and routes by
-cheapest cost). Self-hosted mode and subscription-resale are separate efforts.
+This pass covers the latchkey-hosted provider flow only.
+A Provider uploads an upstream credential and per-Model pricing; latchkey runs bitllm on their behalf, custodies the credential encrypted, and routes by cheapest cost.
+(Previously called "API-delegating"; see `docs/adr/0005` for the bitllm protocol vs latchkey application split.)
+Running your own bitllm host, and subscription resale, are separate efforts.
 
 ## Decisions so far (grilled)
 
 1. **Provider identity = wallet.** One wallet owns exactly one Provider. The wallet is also the
    payout address. Seeded operator Providers are grandfathered (no wallet, operator-managed).
-2. **Custody is mode-specific** (glossary amended; `docs/adr/0005`). API-delegating mode custodies
-   the provider's upstream credential, encrypted at rest. Self-hosted holds nothing.
+2. **latchkey custodies the uploaded credential, encrypted at rest.** There is no "never holds keys" principle (that premise was wrong; corrected in `docs/adr/0005`). A bitllm-host Provider uploads nothing, so latchkey holds no credential for it.
 3. **Connection is the registration unit.** A Provider registers a Connection (endpoint, wire
    format, credential). Discovery enumerates the Models on it and creates one Listing per Model.
    Provider 1 wallet, many Connections, many Listings.
@@ -43,8 +43,8 @@ type Provider = {
 type Connection = {
   id: string
   providerWallet: `0x${string}`
-  mode: 'delegated' | 'self_hosted'
-  endpoint: string                   // upstream API (delegated) or the provider's own server
+  mode: 'latchkey_hosted' | 'bitllm_host'
+  endpoint: string                   // upstream API (latchkey_hosted) or the Provider's own bitllm host
   upstreamFormat: 'openai' | 'anthropic'
   credentialEnc: string | null       // ciphertext (iv, tag, data); never plaintext, never returned
   active: boolean
